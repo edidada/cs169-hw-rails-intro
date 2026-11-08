@@ -1,16 +1,54 @@
 class MoviesController < ApplicationController
   before_action :set_movie, only: %i[ show edit update destroy ]
 
+  # The four ratings the hw filter checkboxes offer.
+  ALL_RATINGS = %w[G PG PG-13 R].freeze
+
+  # Sorting keys that the Movie Title / Release Date header links may
+  # request. The session stores the *last* chosen one so revisiting the
+  # list keeps the ordering, exactly as the hw "remember settings" part
+  # requires.
+  SORT_KEYS = %w[title release_date].freeze
+
   # GET /movies or /movies.json
   def index
-    @movies = Movie.all
+    # A request that provides neither the sort key nor a ratings filter
+    # falls back to the remembered settings; otherwise what was sent wins.
+    if params[:ratings].present?
+      session[:ratings] = params[:ratings].to_unsafe_h.slice(*ALL_RATINGS)
+    end
+    if params[:sort].present? && SORT_KEYS.include?(params[:sort])
+      session[:sort] = params[:sort]
+    end
+
+    checked = if params.key?(:ratings)
+                params[:ratings].to_unsafe_h.keys & ALL_RATINGS
+              elsif session[:ratings].present?
+                session[:ratings].keys & ALL_RATINGS
+              else
+                ALL_RATINGS.dup
+              end
+    @selected_ratings = checked
+
+    @all_ratings = ALL_RATINGS
+    @sort = session[:sort]
+
+    relation = Movie.where(rating: checked)
+    ordered = case @sort
+              when 'release_date' then relation.order(release_date: :asc)
+              when 'title' then relation.order(title: :asc)
+              else relation.order(:id)
+              end
+    @movies = ordered
+    @hilite = { 'title' => 'hilite bg-warning',
+                'release_date' => 'hilite bg-warning' }[@sort]
   end
 
-  # GET /movies/1 or /movies/1.json
+  # GET /movies/1 or /movies.json
   def show
   end
 
-  # GET /movies/new
+  # GET /movies/new or /movies.json
   def new
     @movie = Movie.new
   end
@@ -34,7 +72,7 @@ class MoviesController < ApplicationController
     end
   end
 
-  # PATCH/PUT /movies/1 or /movies/1.json
+  # PATCH/PUT /movies/1 or /movies.json
   def update
     respond_to do |format|
       if @movie.update(movie_params)
@@ -47,7 +85,7 @@ class MoviesController < ApplicationController
     end
   end
 
-  # DELETE /movies/1 or /movies/1.json
+  # DELETE /movies/:id
   def destroy
     @movie.destroy!
 
